@@ -1,0 +1,95 @@
+name: Bug report
+description: Something in t2chill didn't work, or made things worse
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The fields below collect what's needed to reproduce your machine's setup.
+        t2chill is tested against a fake copy of the kernel's settings, so the exact output of these commands matters more than a description.
+
+        **Need to get your Mac back to stock right now?** Run `sudo systemctl stop t2chill` (or just reboot). Everything t2chill changes is undone either way.
+
+  - type: input
+    id: model
+    attributes:
+      label: Mac model
+      description: "Output of: `cat /sys/class/dmi/id/product_name`"
+      placeholder: Macmini8,1
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Linux distribution and version
+      description: "e.g. Ubuntu 24.04, Debian 13, Fedora 42, umbrelOS 2.0. `cat /etc/os-release` shows it."
+    validations:
+      required: true
+
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      description: "Output of: `uname -r`. Say if it's a t2linux kernel."
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: t2chill version
+      description: "Output of: `t2chill --version`"
+      placeholder: t2chill 1.0.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include the exact command you ran and any error message.
+    validations:
+      required: true
+
+  - type: textarea
+    id: status
+    attributes:
+      label: "Output of `sudo t2chill status`"
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Paste the output of this block. It shows which power controls your kernel exposes:
+        ```
+        cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
+        ls /sys/class/powercap /sys/devices/system/cpu/intel_pstate
+        cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_available_preferences
+        sudo journalctl -u t2chill -b --no-pager | tail -30
+        ```
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: thermal-log
+    attributes:
+      label: Thermal log (optional)
+      description: |
+        If you installed with `--with-logger` and the problem involves temperatures or crashes:
+        `tail -30 /var/lib/t2chill/temps.csv`
+      render: shell
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked the output above for anything personal (hostnames, usernames, IP addresses) and removed it.
+          required: true
