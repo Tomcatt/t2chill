@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 [ "$(id -u)" -eq 0 ] || { echo "run as root: sudo ./install.sh $*" >&2; exit 1; }
 PREFIX=${PREFIX:-/usr/local}
-SBIN=$PREFIX/sbin
+BIN=$PREFIX/bin
 UNITS=/etc/systemd/system
 LOGGER=0; [ "${1:-}" = "--with-logger" ] && LOGGER=1
 
@@ -12,10 +12,10 @@ command -v systemctl >/dev/null || { echo "t2chill needs systemd" >&2; exit 1; }
 [ -e /sys/class/powercap/intel-rapl:0 ] || echo "warning: no Intel RAPL power controls found; the power cap will be skipped"
 [ -e /sys/devices/system/cpu/intel_pstate ] || echo "warning: intel_pstate not active; turbo/EPP controls will be skipped"
 
-echo "== installing t2chill to $SBIN"
-install -Dm755 t2chill "$SBIN/t2chill"
+echo "== installing t2chill to $BIN"
+install -Dm755 t2chill "$BIN/t2chill"
 for u in t2chill.service t2chill-log.service t2chill-log.timer; do
-	sed "s|@SBIN@|$SBIN|g" "systemd/$u" > "$UNITS/$u"
+	sed "s|@BIN@|$BIN|g" "systemd/$u" > "$UNITS/$u"
 	chmod 644 "$UNITS/$u"
 done
 
@@ -38,6 +38,6 @@ if [ "$LOGGER" -eq 1 ]; then
 fi
 
 echo
-"$SBIN/t2chill" status
+"$BIN/t2chill" status
 echo
 echo "Installed. Applied now and at every boot. Undo: sudo systemctl stop t2chill   Remove: sudo ./uninstall.sh"

@@ -6,8 +6,8 @@ After=sysinit.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=@SBIN@/t2chill apply
-ExecStop=@SBIN@/t2chill revert
+ExecStart=@BIN@/t2chill apply
+ExecStop=@BIN@/t2chill revert
 
 [Install]
 WantedBy=multi-user.target

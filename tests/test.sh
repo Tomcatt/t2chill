@@ -64,5 +64,15 @@ echo "status"
 ./t2chill status > "$T/status.out" || { echo "FAIL  status exited $?"; exit 1; }
 run grep -q 'Macmini8,1' "$T/status.out"; ok "status runs (no sensor)"
 
-[ "$pass" -eq 20 ] || { echo "FAIL  expected 20 checks, ran $pass"; exit 1; }
+echo "first capture of already-tuned values warns"
+# Simulate a machine someone already tuned since boot: saving these as "firmware defaults" is wrong
+for i in 0 1 2 3; do echo balance_power > "$C/cpu$i/cpufreq/energy_performance_preference"; done
+T2CHILL_STATE=$T/state2 ./t2chill apply > "$T/tuned.out"
+run grep -q 'look already tuned' "$T/tuned.out"; ok "warns when the defaults capture looks tuned"
+for i in 0 1 2 3; do echo balance_performance > "$C/cpu$i/cpufreq/energy_performance_preference"; done
+T2CHILL_STATE=$T/state3 ./t2chill apply > "$T/clean.out"
+if grep -q 'look already tuned' "$T/clean.out"; then echo "FAIL  warned on a clean firmware capture"; exit 1; fi
+ok "no warning on a clean firmware capture"
+
+[ "$pass" -eq 22 ] || { echo "FAIL  expected 22 checks, ran $pass"; exit 1; }
 echo; echo "all $pass checks passed"

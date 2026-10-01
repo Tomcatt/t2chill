@@ -4,4 +4,4 @@ Documentation=https://github.com/Tomcatt/t2chill
 
 [Service]
 Type=oneshot
-ExecStart=@SBIN@/t2chill log
+ExecStart=@BIN@/t2chill log

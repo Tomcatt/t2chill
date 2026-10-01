@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-VERSION=1.0.0
+VERSION=1.0.1
 SYS=${T2CHILL_SYSFS:-/sys}               # overridable so tests can use a fake tree
 STATE=${T2CHILL_STATE:-/var/lib/t2chill}
 CONF=${T2CHILL_CONF:-/etc/default/t2chill}
@@ -86,7 +86,16 @@ cmd_apply() {
 	mkdir -p "$STATE"
 	local ts; ts=$(date -u +%Y%m%dT%H%M%SZ)
 	current > "$STATE/before-$ts.env"
-	[ -f "$DEFAULTS" ] || cp "$STATE/before-$ts.env" "$DEFAULTS"
+	if [ ! -f "$DEFAULTS" ]; then
+		cp "$STATE/before-$ts.env" "$DEFAULTS"
+		# The first capture becomes what `revert` restores. If something already tuned
+		# these values since boot, the capture is wrong: say so instead of trusting it.
+		if grep -qE '^(NO_TURBO=1|EPP=(balance_power|power))$' "$DEFAULTS"; then
+			echo "   WARNING: these values look already tuned (turbo off or a power-saving EPP),"
+			echo "   but they were just saved as the firmware defaults that 'revert' restores."
+			echo "   To capture the real defaults: reboot, delete $DEFAULTS, then run apply."
+		fi
+	fi
 	echo "   backed up current values to $STATE/before-$ts.env"
 
 	write "$RAPL/constraint_0_power_limit_uw" $((PL1_W * 1000000)) "PL1 sustained power (uW)" || true

@@ -53,11 +53,13 @@ sudo ./install.sh                 # or: sudo ./install.sh --with-logger
 
 The installer **applies the settings immediately and at every boot**, then prints a status report.
 
+> **Tuned these settings by hand since your last boot?** Reboot first. The first `apply` saves the current values as the "firmware defaults" that `revert` restores. If they're already tuned, `revert` can't take you back to stock. t2chill warns when a capture looks tuned.
+
 What it installs:
 
 | Path | What it is |
 |---|---|
-| `/usr/local/sbin/t2chill` | the tool |
+| `/usr/local/bin/t2chill` | the tool |
 | `/etc/systemd/system/t2chill.service` | applies the settings at boot; `stop` reverts them |
 | `/etc/default/t2chill` | your settings (only created if it doesn't already exist) |
 | `/var/lib/t2chill/` | backups of the original values, plus the thermal log |
@@ -124,7 +126,7 @@ Uninstalling **restores the firmware defaults immediately**, so there's no need 
 
 ```bash
 sudo systemctl disable --now t2chill-log.timer t2chill.service   # stop = revert
-sudo rm -f /etc/systemd/system/t2chill.service /etc/systemd/system/t2chill-log.{service,timer} /usr/local/sbin/t2chill
+sudo rm -f /etc/systemd/system/t2chill.service /etc/systemd/system/t2chill-log.{service,timer} /usr/local/bin/t2chill
 sudo systemctl daemon-reload
 sudo rm -rf /var/lib/t2chill /etc/default/t2chill               # optional
 ```

@@ -10,7 +10,7 @@ echo "== stopping t2chill (this restores the firmware defaults it saved)"
 systemctl disable --now t2chill-log.timer 2>/dev/null || true
 systemctl disable --now t2chill.service 2>/dev/null || true
 
-rm -f "$UNITS/t2chill.service" "$UNITS/t2chill-log.service" "$UNITS/t2chill-log.timer" "$PREFIX/sbin/t2chill"
+rm -f "$UNITS/t2chill.service" "$UNITS/t2chill-log.service" "$UNITS/t2chill-log.timer" "$PREFIX/bin/t2chill" "$PREFIX/sbin/t2chill"
 systemctl daemon-reload
 
 if [ "${1:-}" = "--purge" ]; then
