@@ -1,0 +1,13 @@
+[Unit]
+Description=t2chill: rein in CPU heat on T2 Mac minis under Linux
+Documentation=https://github.com/Tomcatt/t2chill
+After=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@SBIN@/t2chill apply
+ExecStop=@SBIN@/t2chill revert
+
+[Install]
+WantedBy=multi-user.target

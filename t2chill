@@ -1,0 +1,165 @@
+#!/bin/bash
+# t2chill: keep T2 Mac minis cool under Linux by reining in the CPU.
+# https://github.com/Tomcatt/t2chill
+#
+# Linux has no driver for the T2 chip's fan control, while Apple's firmware lets the
+# CPU draw 100W sustained / 125W burst and sprint to full turbo. The result is cores
+# slamming into 100C and throttling hundreds of times a minute. t2chill fixes the heat
+# at the source: energy/performance preference -> balance_power, turbo off, and a
+# package power cap. Every value it changes is backed up first and can be restored.
+#
+# Nothing here touches firmware, NVRAM or the SMC. All changes are runtime kernel
+# settings: a reboot restores the firmware defaults on its own.
+
+set -euo pipefail
+
+VERSION=1.0.0
+SYS=${T2CHILL_SYSFS:-/sys}               # overridable so tests can use a fake tree
+STATE=${T2CHILL_STATE:-/var/lib/t2chill}
+CONF=${T2CHILL_CONF:-/etc/default/t2chill}
+# shellcheck disable=SC1090
+[ -f "$CONF" ] && . "$CONF"
+
+PL1_W=${PL1_W:-35}                       # sustained package power limit, watts
+PL2_W=${PL2_W:-45}                       # short burst limit, watts
+EPP=${EPP:-balance_power}                # energy/performance preference
+TURBO_OFF=${TURBO_OFF:-1}                # 1 = cap at base clock, 0 = keep turbo
+
+RAPL=$SYS/class/powercap/intel-rapl:0
+CPU=$SYS/devices/system/cpu
+DEFAULTS=$STATE/firmware-defaults.env
+CSV=$STATE/temps.csv
+
+die() { echo "t2chill: $*" >&2; exit 1; }
+rd() { cat "$1" 2>/dev/null || echo "-"; }
+
+need_root() {
+	[ -n "${T2CHILL_SYSFS:-}" ] && return 0
+	[ "$(id -u)" -eq 0 ] || die "this needs root: sudo t2chill $1"
+}
+
+coretemp() {
+	local n
+	for n in "$SYS"/class/hwmon/hwmon*/name; do
+		[ "$(cat "$n" 2>/dev/null)" = coretemp ] && { dirname "$n"; return 0; }
+	done
+	return 0   # no sensor: print nothing, but don't trip set -e in the caller
+}
+
+current() {
+	echo "PL1_UW=$(rd "$RAPL/constraint_0_power_limit_uw")"
+	echo "PL2_UW=$(rd "$RAPL/constraint_1_power_limit_uw")"
+	echo "EPP=$(rd "$CPU/cpu0/cpufreq/energy_performance_preference")"
+	echo "NO_TURBO=$(rd "$CPU/intel_pstate/no_turbo")"
+}
+
+# write PATH VALUE LABEL: set a value and read it back, never fatal
+write() {
+	if [ ! -e "$1" ]; then echo "   $3: not available on this system, skipped"; return 1; fi
+	echo "$2" > "$1" 2>/dev/null || true
+	if [ "$(cat "$1")" = "$2" ]; then echo "   $3 -> $2"; return 0; fi
+	echo "   WARNING: $3 did not take (still $(cat "$1"))"; return 1
+}
+
+set_epp() {
+	local f n=0
+	for f in "$CPU"/cpu[0-9]*/cpufreq/energy_performance_preference; do
+		[ -e "$f" ] || continue
+		echo "$1" > "$f" 2>/dev/null && n=$((n + 1))
+	done
+	[ "$n" -gt 0 ] && echo "   energy/perf preference -> $1 ($n cpus)" \
+		|| echo "   energy/perf preference: not available on this system, skipped"
+}
+
+check_hw() {
+	local model
+	model=$(rd "$SYS/class/dmi/id/product_name")
+	[ "$model" = "Macmini8,1" ] && return 0
+	echo "   note: this is '$model', not a Mac mini 2018 (Macmini8,1). t2chill only uses"
+	echo "   standard Intel power controls, so it's safe, but it was built for that model."
+}
+
+cmd_apply() {
+	need_root apply
+	echo "t2chill $VERSION: apply"
+	check_hw
+	mkdir -p "$STATE"
+	local ts; ts=$(date -u +%Y%m%dT%H%M%SZ)
+	current > "$STATE/before-$ts.env"
+	[ -f "$DEFAULTS" ] || cp "$STATE/before-$ts.env" "$DEFAULTS"
+	echo "   backed up current values to $STATE/before-$ts.env"
+
+	write "$RAPL/constraint_0_power_limit_uw" $((PL1_W * 1000000)) "PL1 sustained power (uW)" || true
+	write "$RAPL/constraint_1_power_limit_uw" $((PL2_W * 1000000)) "PL2 burst power (uW)" || true
+	set_epp "$EPP"
+	write "$CPU/intel_pstate/no_turbo" "$TURBO_OFF" "turbo disabled (no_turbo)" || true
+}
+
+cmd_revert() {
+	need_root revert
+	echo "t2chill $VERSION: revert"
+	[ -f "$DEFAULTS" ] || die "no saved defaults in $STATE. A reboot restores firmware defaults."
+	local PL1_UW PL2_UW EPP NO_TURBO
+	# shellcheck disable=SC1090
+	. "$DEFAULTS"
+	# "-" means the control didn't exist when the defaults were captured: leave it alone
+	if [ "$PL1_UW" != "-" ]; then write "$RAPL/constraint_0_power_limit_uw" "$PL1_UW" "PL1 sustained power (uW)" || true; fi
+	if [ "$PL2_UW" != "-" ]; then write "$RAPL/constraint_1_power_limit_uw" "$PL2_UW" "PL2 burst power (uW)" || true; fi
+	if [ "$EPP" != "-" ]; then set_epp "$EPP"; fi
+	if [ "${NO_TURBO:--}" != "-" ]; then write "$CPU/intel_pstate/no_turbo" "$NO_TURBO" "turbo disabled (no_turbo)" || true; fi
+}
+
+cmd_status() {
+	local h t1 t2 e1 e2
+	echo "t2chill $VERSION: status"
+	echo "   model:    $(rd "$SYS/class/dmi/id/product_name")"
+	echo "   current:  $(current | tr '\n' ' ')"
+	[ -f "$DEFAULTS" ] && echo "   defaults: $(tr '\n' ' ' < "$DEFAULTS")"
+	h=$(coretemp)
+	if [ -n "$h" ]; then
+		echo "   package:  $(( $(rd "$h/temp1_input") / 1000 ))°C"
+		printf "   cores:   "; for t in "$h"/temp[2-9]_input; do [ -e "$t" ] && printf " %s°C" "$(( $(cat "$t") / 1000 ))"; done; echo
+	fi
+	t1=$(rd "$CPU/cpu0/thermal_throttle/package_throttle_count")
+	if [ -r "$RAPL/energy_uj" ] && e1=$(cat "$RAPL/energy_uj" 2>/dev/null); then
+		sleep 5
+		e2=$(cat "$RAPL/energy_uj"); t2=$(rd "$CPU/cpu0/thermal_throttle/package_throttle_count")
+		echo "   last 5s:  $(( (e2 - e1) / 5000000 ))W package power, $(( t2 - t1 )) throttle events"
+	else
+		echo "   (run with sudo for live power draw and throttle rate)"
+	fi
+}
+
+cmd_log() {
+	local h pkg maxc
+	mkdir -p "$STATE"
+	[ -s "$CSV" ] || echo "utc,pkg_c,max_core_c,pkg_throttle_total,avg_mhz,epp,no_turbo" > "$CSV"
+	h=$(coretemp)
+	pkg=-; maxc=-
+	if [ -n "$h" ]; then
+		pkg=$(( $(rd "$h/temp1_input") / 1000 ))
+		maxc=$(cat "$h"/temp[2-9]_input 2>/dev/null | sort -n | tail -1); maxc=$(( ${maxc:-0} / 1000 ))
+	fi
+	echo "$(date -u +%FT%TZ),$pkg,$maxc,$(rd "$CPU/cpu0/thermal_throttle/package_throttle_count"),$(awk '/MHz/{s+=$4;n++} END{if(n)printf "%.0f", s/n}' /proc/cpuinfo),$(rd "$CPU/cpu0/cpufreq/energy_performance_preference"),$(rd "$CPU/intel_pstate/no_turbo")" >> "$CSV"
+	sync "$CSV"   # survive a sudden power cut: these lines are the evidence
+}
+
+case "${1:-}" in
+	apply) cmd_apply ;;
+	revert) cmd_revert ;;
+	status) cmd_status ;;
+	log) cmd_log ;;
+	--version|-v) echo "t2chill $VERSION" ;;
+	*) cat <<EOF
+t2chill $VERSION: keep T2 Mac minis cool under Linux
+
+usage: t2chill <command>
+  status    show settings, temperatures, and (with sudo) power + throttle rate
+  apply     back up current values, then cap power / set balance_power / turbo off
+  revert    restore the firmware defaults saved by the first apply
+  log       append one line of thermal data to $CSV
+
+settings: $CONF (PL1_W, PL2_W, EPP, TURBO_OFF)
+EOF
+		[ -n "${1:-}" ] && exit 2 ;;
+esac

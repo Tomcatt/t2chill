@@ -1,0 +1,7 @@
+[Unit]
+Description=t2chill: log one line of CPU thermal data
+Documentation=https://github.com/Tomcatt/t2chill
+
+[Service]
+Type=oneshot
+ExecStart=@SBIN@/t2chill log
