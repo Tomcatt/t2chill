@@ -22,6 +22,14 @@ Measured on a Mac mini 2018 (Macmini8,1, Core i7-8700B, 32GB) running a Bitcoin 
 
 Average clock speed at idle went from **~3,755MHz to ~900MHz**. Before the fix, the cores were never actually resting.
 
+**12 days later** (Oct 1–13, 2026, ~16,000 one-minute readings from `--with-logger`), same machine and workload:
+
+| Metric | Result |
+|---|---|
+| Throttle events | **0** (the kernel's throttle counter never moved) |
+| Package temperature | median 58°C, 95th percentile 75°C |
+| Peak | 91°C, in 0.24% of readings (brief load spikes, none caused throttling) |
+
 ## Does this apply to you?
 
 - **Hardware:** built for the **Mac mini 2018 (`Macmini8,1`)**. It only uses standard Intel power controls, so it's safe on other T2 Intel Macs too, but it was only tested on the mini.
